@@ -4,10 +4,28 @@ import * as cheerio from "cheerio";
 import { JSDOM } from "jsdom";
 import type { NextApiRequest, NextApiResponse } from "next";
 import { cleanSourceText } from "../../utils/sources";
+import axios from 'axios';
 
 type Data = {
   sources: Source[];
 };
+
+async function extractUrlsFromYandex(query: string): Promise<string[]> {
+    const params = {
+        folderid: '#',
+        apikey: '#',
+        query: query
+    };
+
+    try {
+        const response = await axios.get('https://yandex.ru/search/xml', { params });
+        const urls = response.data.match(/<url>(https?:\/\/[^<]+)<\/url>/g).map((url: string) => url.replace(/<\/?url>/g, ''));
+        return urls;
+    } catch (error) {
+        console.error('Error fetching URLs from Yandex:', error);
+        return [];
+    }
+}
 
 const searchHandler = async (req: NextApiRequest, res: NextApiResponse<Data>) => {
   try {
@@ -15,57 +33,30 @@ const searchHandler = async (req: NextApiRequest, res: NextApiResponse<Data>) =>
       query: string;
       model: OpenAIModel;
     };
+    
+    const urls = await extractUrlsFromYandex(query);
+    const maxUrls = 5;
+    const finalLinks = urls.slice(0, maxUrls);
 
-    const sourceCount = 4;
-
-    // GET LINKS
-    const response = await fetch(`https://www.google.com/search?q=${query}`);
-    const html = await response.text();
-    const $ = cheerio.load(html);
-    const linkTags = $("a");
-
-    let links: string[] = [];
-
-    linkTags.each((i, link) => {
-      const href = $(link).attr("href");
-
-      if (href && href.startsWith("/url?q=")) {
-        const cleanedHref = href.replace("/url?q=", "").split("&")[0];
-
-        if (!links.includes(cleanedHref)) {
-          links.push(cleanedHref);
-        }
-      }
-    });
-
-    const filteredLinks = links.filter((link, idx) => {
-      const domain = new URL(link).hostname;
-
-      const excludeList = ["google", "facebook", "twitter", "instagram", "youtube", "tiktok"];
-      if (excludeList.some((site) => domain.includes(site))) return false;
-
-      return links.findIndex((link) => new URL(link).hostname === domain) === idx;
-    });
-
-    const finalLinks = filteredLinks.slice(0, sourceCount);
-
-    // SCRAPE TEXT FROM LINKS
-    const sources = (await Promise.all(
+    const sources: Source[] = (await Promise.all(
       finalLinks.map(async (link) => {
-        const response = await fetch(link);
-        const html = await response.text();
-        const dom = new JSDOM(html);
-        const doc = dom.window.document;
-        const parsed = new Readability(doc).parse();
+        try {
+          const response = await fetch(link);
+          const html = await response.text();
+          const dom = new JSDOM(html);
+          const doc = dom.window.document;
+          const parsed = new Readability(doc).parse();
 
-        if (parsed) {
-          let sourceText = cleanSourceText(parsed.textContent);
-
-          return { url: link, text: sourceText };
+          if (parsed) {
+            let sourceText = cleanSourceText(parsed.textContent);
+            return { url: link, text: sourceText };
+          }
+        } catch (error) {
+          console.error('Error fetching or extracting content from URL:', error);
         }
       })
-    )) as Source[];
-
+    ))
+    
     const filteredSources = sources.filter((source) => source !== undefined);
 
     for (const source of filteredSources) {
