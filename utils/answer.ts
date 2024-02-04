@@ -17,7 +17,7 @@ export const OpenAIStream = async (prompt: string, apiKey: string) => {
         { role: "system", content: "Ты — полезный ассистент, который точно отвечает на запрос пользователя." },
         { role: "user", content: prompt }
       ],
-      max_tokens: 300,
+      max_tokens: 500,
       temperature: 0.0,
       stream: true
     })

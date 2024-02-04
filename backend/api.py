@@ -58,6 +58,7 @@ async def generate(message: Message):
     response = []
     for idx in I[0]:
         # answer = '\n'.join([_[0] for _ in sent_list[idx-3:idx+1]])
+        url = sent_list[idx][1]
         answer = '\n'.join([sent_list[_][0] for _ in range(idx-3, idx+1)])
-        response.append({"id": int(idx), "answer": answer})
+        response.append({"id": int(idx), "answer": answer, "url": url})
     return {"responses": response}

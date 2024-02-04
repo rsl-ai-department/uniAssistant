@@ -27,6 +27,22 @@ async function extractUrlsFromYandex(query: string): Promise<string[]> {
     }
 }
 
+async function fetchContentFromOurApi(query: string): Promise<Source[]> {
+    try {
+        const response = await axios.post('http://localhost:8000/generate/', {
+            text: query,
+        });
+        const sources = response.data.responses.map((item) => ({
+            url: item.url,
+            text: item.answer,
+        }));
+        return sources;
+    } catch (error) {
+        console.error('Error fetching content from our API:', error);
+        return [];
+    }
+}
+
 const searchHandler = async (req: NextApiRequest, res: NextApiResponse<Data>) => {
   try {
     const { query, model } = req.body as {
@@ -34,11 +50,13 @@ const searchHandler = async (req: NextApiRequest, res: NextApiResponse<Data>) =>
       model: OpenAIModel;
     };
     
-    const urls = await extractUrlsFromYandex(query);
+    // Fetching URLs from Yandex
+    const yandexUrls = await extractUrlsFromYandex(query);
     const maxUrls = 5;
-    const finalLinks = urls.slice(0, maxUrls);
+    const finalLinks = yandexUrls.slice(0, maxUrls);
 
-    const sources: Source[] = (await Promise.all(
+    // Fetching content from Yandex URLs
+    const yandexSources: Source[] = (await Promise.all(
       finalLinks.map(async (link) => {
         try {
           const response = await fetch(link);
@@ -55,15 +73,18 @@ const searchHandler = async (req: NextApiRequest, res: NextApiResponse<Data>) =>
           console.error('Error fetching or extracting content from URL:', error);
         }
       })
-    ))
-    
-    const filteredSources = sources.filter((source) => source !== undefined);
+    )).filter((source): source is Source => source !== undefined);
 
-    for (const source of filteredSources) {
-      source.text = source.text.slice(0, 1500);
-    }
+    // Fetching content from our API
+    const ourApiSources = await fetchContentFromOurApi(query);
 
-    res.status(200).json({ sources: filteredSources });
+    // Combining sources from Yandex and our API, and truncating text
+    const combinedSources = [...yandexSources, ...ourApiSources].map(source => ({
+      ...source,
+      text: source.text.slice(0, 2000) // Truncate text if necessary
+    }));
+
+    res.status(200).json({ sources: combinedSources });
   } catch (err) {
     console.log(err);
     res.status(500).json({ sources: [] });
