@@ -4,7 +4,7 @@
 1. Clone repo
 
 ```bash
-git clone https://github.com/mckaywrigley/clarity-ai.git
+git clone https://github.com/rsl-ai-department/uniAssistant.git
 ```
 
 2. Install dependencies
